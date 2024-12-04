@@ -5,7 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <netinet/in.h>
+#include <errno.h>
 #define local_port      8888
 
 //  http://192.168.181.129:8888/index.html
@@ -45,7 +46,8 @@ int main(int argc,char** argv){
     }
 
     struct sockaddr_in clientAddr;//客户端地址
-    int clientfd = accept(listenfd,(struct sockaddr*)&clientAddr,sizeof(clientAddr));
+    socklen_t clientLen = sizeof(clientAddr);
+    int clientfd = accept(listenfd,(struct sockaddr*)&clientAddr,&clientLen);
     if(clientfd == -1){
         close(listenfd);
         perror("accept error!\n");
@@ -55,7 +57,7 @@ int main(int argc,char** argv){
     unsigned char recvData[1024];
 
     while(1){
-        unsigned char* sendData = "hello,this is server!\n";
+        const char* sendData = "hello,this is server!\n";
         int iSendLength = write(clientfd,sendData,strlen(sendData));
         if(iSendLength <= 0){
             close(clientfd);
