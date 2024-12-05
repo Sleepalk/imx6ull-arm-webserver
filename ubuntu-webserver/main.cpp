@@ -13,31 +13,26 @@
 //  http://192.168.181.129:8888/index.html
 
 //服务器多线程实现
-/*
+
 void* Talk_Thread(void* arg){
     //线程执行函数
-    int clientfd = *((int*)arg);
-    free(arg);
+    int clientfd = (intptr_t)arg;
     unsigned char recvData[1024];
     memset(&recvData,0,1024);
-    const char* sendData = "hello,this is server!\n";
+    unsigned char sendData[1024] = "hello,this is server!\n";
     while(1){
-        int iSendLength = write(clientfd,sendData,strlen(sendData));
+        int iSendLength = write(clientfd,sendData,sizeof(sendData));
         if(iSendLength <= 0){
             close(clientfd);
-            close(listenfd);
             perror("sendData error!\n");
-            return -1;
         }
-        sleep(1);
-        int iRecvLength = read(clientfd,&recvData,sizeof(recvData) - 1);
+        printf("wait read\n");
+        int iRecvLength = read(clientfd,&recvData,sizeof(recvData));
         if(iRecvLength <= 0){
             perror("recvData error!\n");
-            return -1;
         }
-        recvData[iRecvLength] = '\0';
         printf("client say: %s\n",recvData);
-
+        printf("read finished!\n");
         usleep(500000);
     }   
 }
@@ -90,31 +85,31 @@ int main(int argc,char** argv){
             return -1;
         }
         client_Sum++;
-        if(pthread_create(curThread,NULL,Talk_Thread,clientfd) != 0){
+        if(pthread_create(&curThread,NULL,Talk_Thread,(void*)(intptr_t)clientfd) != 0){
             perror("create thread error!\n");
             client_Sum--;
             close(clientfd);
             continue;
         }
-        printf("client sum: %d",client_Sum);
+        pthread_detach(curThread);
+        printf("client sum: %d\n",client_Sum);
     }
     
-    close(clientfd);
     close(listenfd);
     return 0;
 }
-*/
 
 //服务器多进程实现
+/*
 int main(){
 
-    int listenfd = socket(AF_IENT,SOCK_STREAM,0);
+    int listenfd = socket(AF_INET,SOCK_STREAM,0);
     if(listenfd <= 0){ perror("create socket error!\n"); return -1;}
 
     //设置地址端口复用
     int reuse = 1;
-    setsockopt(listenfd,SOL_REUSEADDR,&reuse,sizeof(reuse));
-
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    
     struct sockaddr_in serverAddr;
     bzero(&serverAddr,sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
@@ -128,36 +123,49 @@ int main(){
     if(iRet == -1){ perror("listenfd listen error!\n"); close(listenfd); return -1;}
 
     struct sockaddr_in clientAddr;
-    const char* sendData = "this is server!\n";
+    socklen_t clientLen = sizeof(clientAddr);
+    unsigned char sendData[1024] = "this is server!\n";
+    static int client_sum = 0;
     while(1){
         memset(&clientAddr,0,sizeof(sockaddr));
-        int clientfd = accept(listenfd, (struct sockaddr*)&clientAddr,sizeof(clientAddr));
+        int clientfd = accept(listenfd, (struct sockaddr*)&clientAddr,&clientLen);
         if(clientfd == -1) { close(clientfd); exit(-1); }
+        client_sum++;
         pid_t pid = fork();
         if(pid == 0){
             //子进程
+            printf("client_sum: %d\n",client_sum);
             unsigned char recvData[1024];
             while(1){
                 memset(&recvData,0,1024);
-                if(0 == write(clientfd,&sendData,sizeof(sendData))){
+                if(0 >= write(clientfd,&sendData,sizeof(sendData))){
                     perror("server write error!\n");
                     close(clientfd);
                     exit(-1);
                 }
-                if(0 == read(clientfd,&recvData,sizeof(recvData) - 1)){
+                printf("wait read\n");
+                if(0 >= read(clientfd,&recvData,sizeof(recvData))){
                     perror("server read error!\n");
                     close(clientfd);
                     exit(-1);
                 }
+                printf("read finished\n");
                 printf("client say: %s\n",recvData);
                 usleep(500000);
             }
             close(clientfd);
+            exit(0);
+        }else if (pid > 0){
+            close(clientfd);
+        }else {
+            perror("fork failed");
+            close(clientfd);
+            exit(-1);
         }
     }
     close(listenfd);
     return 0;
 }
-
+*/
 
 //多路复用,select

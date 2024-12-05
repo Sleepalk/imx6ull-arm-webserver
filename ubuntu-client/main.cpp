@@ -35,16 +35,15 @@ int main(){
     while(1){
         memset(&recvData,0,1024);
         memset(&sendData,0,1024);
-        int iRecvLength = read(clientfd,&recvData,sizeof(recvData) - 1);
-        recvData[iRecvLength] = '\0';
+        int iRecvLength = read(clientfd,&recvData,sizeof(recvData));
         if(iRecvLength <= 0){
             perror("client read error!\n");
             break;
         }
-        printf("server say: %s\n",recvData);
-        printf("you say:")
-        scanf("%1023s",sendData);
-        int iSendLength = write(clientfd,sendData,strlen(sendData));
+        printf("server say: %s",recvData);
+        printf("you say:");
+        scanf("%s",sendData);
+        int iSendLength = write(clientfd,sendData,sizeof(sendData));
         if(iSendLength <= 0){
             perror("client write error!\n");
             break;
