@@ -32,7 +32,7 @@ if(pid == 0){
 IO多路复用技术(select/poll/epoll)
 :一个线程,通过记录I/O流的状态来同时管理多个I/O,
 
-1.select
+1.select        :最大只支持1024个客户端连接，存在内核态到用户态的拷贝，造成额外开销,底层是线性表的结构
 =====================================================================
 int select(int nfds, fd_set *readfds, fd_set *writefds,
            fd_set *exceptfds, struct timeval *timeout);     //timeout = 0,不断轮询; timeout = NULL,阻塞,等待条件满足; timeout != 0,超时时间
@@ -53,4 +53,19 @@ if(FD_ISSET(fd,&readfds)){      //判断是否成功监视
     //监视成功
 }
 select(fdmax+1, readfds, 0, 0, 0);
+=====================================================================
+
+
+2.poll          :与select类似，但是没有最大连接限制，主要取决于系统性能，也存在内核态到用户态的拷贝，造成额外的开销，底层是线性表的结构
+=====================================================================
+#include <poll.h>
+//每个委托poll检测的fd都对应这样一个结构体
+struct pollfd{
+    int fd;             /* 委托内核检测的文件描述符 */
+    short events;       /* 委托内核检测文件描述符的什么事件 */          POLLIN是读事件，POLLOUT是写事件
+    short revents;      /* 文件描述符实际发生的事件 -> 传出 */
+}
+
+struct pollfd myfd[100];    //需要检测的文件描述符个数
+int poll(struct pollfd *fds, nfds_t nfds,int timeout);
 =====================================================================

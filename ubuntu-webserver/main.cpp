@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <iostream>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <sys/un.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,12 +10,16 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <vector>
+#include <poll.h>
 #define local_port      8888
+#define FD_MAXSIZE      4
 
 //  http://192.168.181.129:8888/index.html
 
 //服务器多线程实现
-
+/*
 void* Talk_Thread(void* arg){
     //线程执行函数
     int clientfd = (intptr_t)arg;
@@ -97,7 +103,7 @@ int main(int argc,char** argv){
     
     close(listenfd);
     return 0;
-}
+}*/
 
 //服务器多进程实现
 /*
@@ -168,4 +174,162 @@ int main(){
 }
 */
 
-//多路复用,select
+//IO多路复用,select方式
+
+int set_nonblocking(int sockfd){
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if(flags == -1) {return -1;}
+    flags |= O_NONBLOCK;
+    if(fcntl(sockfd,F_SETFL,flags) == -1)
+        return -1;
+    return 0;
+}
+
+int main(){
+
+    int listenfd = socket(AF_INET,SOCK_STREAM,0);
+    if(listenfd == -1) { perror("listenfd create error!\n"); return -1; }
+    printf("server cur listenfd: %d\n",listenfd);
+    int maxfd = listenfd;
+
+    //设置地址和端口复用
+    int reuse = 1;
+    int iRet = setsockopt(listenfd,SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse));
+    if(iRet == -1) { perror("setsockopt error!\n"); return -1; }
+
+    //设置fd非阻塞
+    set_nonblocking(listenfd);
+
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr,0,sizeof(sockaddr_in));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(local_port);
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    iRet = bind(listenfd, (struct sockaddr*)&serverAddr,sizeof(serverAddr));
+    if(iRet == -1) { perror("listenfd bind error!"); return -1; }
+
+    iRet = listen(listenfd,10);
+    if(iRet == -1) { perror("listenfd listen error!"); return -1; }
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(listenfd,&readfds);
+
+    unsigned char sendData[1024] = "server say: hello,this is server!\n";
+    unsigned char recvData[1024];
+    while(1){
+        fd_set tmpfds;
+        FD_ZERO(&tmpfds);
+        tmpfds = readfds;
+
+        iRet = select(maxfd + 1, &tmpfds, NULL, NULL, NULL);
+        if(iRet == -1){ perror("select error!\n"); continue; }
+
+        if(FD_ISSET(listenfd, &tmpfds)){
+            //有新客户端连接
+            int clientFd_ = accept(listenfd,NULL,NULL);
+            if(clientFd_ > listenfd){
+                maxfd = clientFd_;
+            }
+            set_nonblocking(clientFd_);
+
+            FD_SET(clientFd_,&readfds);
+            printf("curClient fd: %d \n",clientFd_);
+        }
+        for(int i = 0; i < maxfd+1; i++){
+            if( i != listenfd && FD_ISSET(i,&readfds)){
+                memset(recvData,0,1024);
+
+                int iSendLength = write(i, sendData, sizeof(sendData));
+                if(iSendLength <= 0) { perror("server write data error!\n"); continue;}
+                printf("server wait read\n");
+                int iRecvLength = read(i, &recvData, sizeof(recvData));
+                if(iRecvLength <= 0) { perror("server read data error!\n"); continue;}
+                printf("client say : %s \n", recvData);
+                printf("server read finished\n");
+            }
+        }
+    }
+    close(listenfd);
+    return 0;
+}
+
+
+//IO多路复用,poll方式
+/*
+int main(){
+
+    int listenfd = socket(AF_INET,SOCK_STREAM,0);
+    if(listenfd == -1) { perror("create socket error!\n"); return -1; }
+
+    //设置地址和端口复用
+    int reuse = 1;
+    int iRet = setsockopt(listenfd,SOL_SOCKET,SO_REUSEADDR | SO_REUSEPORT,&reuse,sizeof(reuse));
+    if(iRet == -1) { perror("setsockopt error!\n"); return -1;}
+
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr,0,sizeof(sockaddr_in));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serverAddr.sin_port = htons(local_port);
+
+    iRet = bind(listenfd, (struct sockaddr*)&serverAddr,sizeof(serverAddr));
+    if(iRet == -1) { perror("listenfd bind error!"); return -1; }
+
+    iRet = listen(listenfd,10);
+    if(iRet == -1) { perror("listenfd listen error!"); return -1; }
+
+    struct pollfd readfds[1024];
+    for(int i = 0; i < 1024; i++){
+        readfds[i].fd = -1;
+        readfds[i].events = POLLIN;//读事件
+    }
+
+    readfds[0].fd = listenfd;
+    int maxfd = 0;
+    unsigned char iSendData[1024] = "server say: hello,this is server!\n";
+    unsigned char iRecvData[1024];
+    memset(iRecvData,0,1024);
+    while(1){
+        int ret = poll(readfds,maxfd + 1, -1);
+        if(ret == -1){
+            perror("poll error!\n");
+            return -1;
+        }
+
+        if(readfds[0].revents & POLLIN){
+            //新客户端到达
+            int curClientFd_ = accept(listenfd,NULL,NULL);
+            int i;
+            for(i = 1; i < 1024; i++){
+                if(readfds[i].fd == -1){
+                    readfds[i].fd = curClientFd_;
+                    readfds[i].events = POLLIN;
+                    printf("current client sum: %d \n",i);
+                    break;
+                }
+            }
+            maxfd = maxfd > i ? maxfd : i;
+        }
+
+        //处理客户端请求
+        for(int i = 1; i < maxfd + 1; i++){
+            if(readfds[i].revents & POLLIN){
+                memset(iRecvData,0,1024);
+                int iSendLength = write(readfds[i].fd, iSendData, sizeof(iSendData));
+                if(iSendLength <= 0) { perror("server write data error!\n"); close(readfds[i].fd);}
+
+                printf("server wait read!\n");
+                int iRecvLength = read(readfds[i].fd, iRecvData, sizeof(iRecvData));
+                if(iRecvLength <= 0) { perror("server read data error!\n"); close(readfds[i].fd);}
+
+                printf("client say: %s\n",iRecvData);
+                printf("server read finished!\n");
+            }
+        }
+    }
+
+    close(listenfd);
+    return 0;
+}*/
+
