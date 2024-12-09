@@ -257,6 +257,14 @@ int main(){
 
 //IO多路复用,poll方式
 /*
+int set_nonblocking(int sockfd){
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if(flags == -1) { return -1;}
+    flags |= O_NONBLOCK;
+    if(fcntl(sockfd, F_SETFL, flags) == -1) { return -1;}
+    return 0;
+}
+
 int main(){
 
     int listenfd = socket(AF_INET,SOCK_STREAM,0);
@@ -266,6 +274,8 @@ int main(){
     int reuse = 1;
     int iRet = setsockopt(listenfd,SOL_SOCKET,SO_REUSEADDR | SO_REUSEPORT,&reuse,sizeof(reuse));
     if(iRet == -1) { perror("setsockopt error!\n"); return -1;}
+
+    if(set_nonblocking(listenfd) == -1) { perror("listenfd set_nonblock error!\n"); return -1;}
 
     struct sockaddr_in serverAddr;
     memset(&serverAddr,0,sizeof(sockaddr_in));
@@ -300,6 +310,7 @@ int main(){
         if(readfds[0].revents & POLLIN){
             //新客户端到达
             int curClientFd_ = accept(listenfd,NULL,NULL);
+            if(set_nonblocking(curClientFd_) == -1) { perror("curClientFd_ set_nonblock error!\n"); return -1;}
             int i;
             for(i = 1; i < 1024; i++){
                 if(readfds[i].fd == -1){
