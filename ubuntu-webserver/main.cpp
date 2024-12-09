@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <vector>
 #include <poll.h>
+#include <sys/epoll.h>
 #define local_port      8888
 #define FD_MAXSIZE      4
 
@@ -175,7 +176,7 @@ int main(){
 */
 
 //IO多路复用,select方式
-
+/*
 int set_nonblocking(int sockfd){
     int flags = fcntl(sockfd, F_GETFL, 0);
     if(flags == -1) {return -1;}
@@ -253,7 +254,7 @@ int main(){
     close(listenfd);
     return 0;
 }
-
+*/
 
 //IO多路复用,poll方式
 /*
@@ -343,4 +344,78 @@ int main(){
     close(listenfd);
     return 0;
 }*/
+
+//IO多路复用,epoll方式
+int set_nonblocking(int sockfd){
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if(flags == -1) { perror("set_nonblocking error!\n"); return -1;}
+    flags |= O_NONBLOCK;
+    if(fcntl(sockfd, F_SETFL, flags) == -1 ) { perror("set_nonblocking error!\n"); return -1;}
+    return 0;
+}
+
+int main(){
+
+    int listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(listenfd == -1) { perror("create socket error!\n"); return -1;}
+
+    int reuse = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse));
+
+    struct sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(local_port);
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    int iRet = bind(listenfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
+    if(iRet == -1) { perror("listenfd bind error!\n"); return -1; }
+
+    iRet = listen(listenfd,128);
+    if(iRet == -1) { perror("listenfd listen error!\n"); return -1;}
+
+    int epollfd = epoll_create(100);
+    if(epollfd == -1) { perror("epollfd create error!\n"); return -1; }
+
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = listenfd;
+    iRet = epoll_ctl(epollfd, EPOLL_CTL_ADD, listenfd, &ev);
+    if(iRet == -1) { perror("add listenfd to epoll error!\n"); return -1;}
+
+    struct epoll_event events[100];
+    unsigned char sendData[1024] = "server say: hello,this is server!\n";
+    unsigned char recvData[1024];
+    while(1){
+        int nfds = epoll_wait(epollfd, events, 100, -1);
+        if(nfds == -1) { perror("epoll wait error!\n"); return -1; }
+
+        for(int n = 0; n < nfds; n++){
+            if(events[n].data.fd == listenfd && events[n].events == EPOLLIN){
+                //有新客户端加入
+                int curClientFd_ = accept(listenfd, NULL, NULL);
+                set_nonblocking(curClientFd_);
+
+                ev.data.fd = curClientFd_;
+                ev.events = EPOLLIN | EPOLLET;
+                epoll_ctl(epollfd, EPOLL_CTL_ADD, curClientFd_ , &ev);
+
+                printf("curClient fd: %d\n",curClientFd_);
+            }else{
+                //处理客户端请求
+                memset(recvData,0,1024);
+
+                int iSendLength = write(events[n].data.fd, sendData, sizeof(sendData));
+                if(iSendLength <= 0) { perror("server write data error!\n"); continue;}
+                printf("server wait read\n");
+                int iRecvLength = read(events[n].data.fd, &recvData, sizeof(recvData));
+                if(iRecvLength <= 0) { perror("server read data error!\n"); continue;}
+                printf("client say : %s \n", recvData);
+                printf("server read finished\n");
+            }
+        }
+    }
+    close(listenfd);
+    close(epollfd);
+    return 0;
+}
 
