@@ -346,6 +346,7 @@ int main(){
 }*/
 
 //IO多路复用,epoll方式
+/*
 int set_nonblocking(int sockfd){
     int flags = fcntl(sockfd, F_GETFL, 0);
     if(flags == -1) { perror("set_nonblocking error!\n"); return -1;}
@@ -400,6 +401,7 @@ int main(){
                 epoll_ctl(epollfd, EPOLL_CTL_ADD, curClientFd_ , &ev);
 
                 printf("curClient fd: %d\n",curClientFd_);
+                write(curClientFd_, sendData, sizeof(sendData));
             }else{
                 //处理客户端请求
                 memset(recvData,0,1024);
@@ -418,4 +420,5 @@ int main(){
     close(epollfd);
     return 0;
 }
+*/
 
