@@ -115,3 +115,6 @@ int epoll_wait(int epfd, struct epoll_event* event, int maxevents, int timeout) 
                                                                                         timeout = 0不阻塞,timeout > 0阻塞timeout时长,timeout = -1一直阻塞
 
 ==============================================================================================================================================================
+
+HTTP格式
+![image](https://github.com/user-attachments/assets/67901af0-f90e-4567-8e43-2d973d77ebc6)
