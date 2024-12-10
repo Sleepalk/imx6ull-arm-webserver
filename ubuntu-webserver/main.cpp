@@ -346,7 +346,7 @@ int main(){
 }*/
 
 //IO多路复用,epoll方式
-/*
+
 int set_nonblocking(int sockfd){
     int flags = fcntl(sockfd, F_GETFL, 0);
     if(flags == -1) { perror("set_nonblocking error!\n"); return -1;}
@@ -420,5 +420,5 @@ int main(){
     close(epollfd);
     return 0;
 }
-*/
+
 
