@@ -15,7 +15,17 @@ class task{
 public:
     task();
     ~task();
+    void init(int sockfd, const sockaddr_in& addr);
+    void init();
+    void close_connect();
 
+public:
+    int m_epollfd;
+
+
+private:
+    static m_user_count = 0;
+    int m_sockfd = -1;
 }
 
 
