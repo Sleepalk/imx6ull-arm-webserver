@@ -18,14 +18,21 @@ public:
     void init(int sockfd, const sockaddr_in& addr);
     void init();
     void close_connect();
-
+    void parseMsg();
+    bool write();
+    bool read();
 public:
-    int m_epollfd;
-
-
+    static int m_epollfd;
+    static int m_user_count; 
+    static int READ_BUFFER_SIZE = 2048;
+    static int WRITE_BUFFER_SIZE = 1024;
 private:
-    static m_user_count = 0;
     int m_sockfd = -1;
+    char recvBuf[READ_BUFFER_SIZE];
+    int m_read_idx;
+    int m_write_idx;
+    struct iovec m_iv[2];
+    int m_iv_count;
 }
 
 
