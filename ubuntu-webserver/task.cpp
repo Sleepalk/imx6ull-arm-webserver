@@ -79,6 +79,7 @@ void task::init(){
     m_read_idx = 0;
     m_write_idx = 0;
     memset(recvBuf,0,sizeof(recvBuf));
+    m_linger = false;   //默认不保持连接
 }
 
 /*
@@ -99,14 +100,53 @@ void task::close_connect(){
 }
 
 /*
-    方法：parseMsg
-    描述：解析客户端请求的报文数据
+    方法：parseRead
+    描述：使用主从状态机，解析客户端请求的报文数据,返回解析过程中可能出现的结果
+    参数：无
+    返回值：HTTP_RESULT
+    by liuyingen 2024.12.16
+*/
+HTTP_RESULT task::parseRead()
+{
+    
+}
+
+/*
+    方法：makeResponse
+    描述：组装响应请求
+    参数：
+        result      //parseRead返回的结果，根据返回的结果组装不同的请求
+    返回值：bool
+    by liuyingen 2024.12.16
+*/
+bool task::makeResponse(HTTP_RESULT result)
+{
+    return false;
+}
+
+/*
+    方法：process
+    描述：处理HTTP请求，包括解析HTTP请求和组装响应报文，由线程池的工作线程调用
     参数：无
     返回值：void
-    by liuyingen 2024.12.12
+    by liuyingen 2024.12.16
 */
-void task::parseMsg()
+void task::process()
 {
+    //解析HTTP请求
+    HTTP_RESULT result = parseRead();
+    if(result == HTTP_RESULT::NO_REQUEST){
+        //请求不完整
+        modfd(m_epollfd,m_sockfd,EPOLLIN);
+        return;
+    }
+
+    //根据结果组装请求
+    bool write_Result = makeResponse(result);
+    if(!write_Result){
+        close_connect();
+    }
+    modfd(m_epollfd,m_sockfd,EPOLLOUT); //检测写事件
 }
 
 /*
@@ -118,19 +158,43 @@ void task::parseMsg()
 */
 bool task::write()
 {
-    int temp = 0;
-    int bytes_have_send = 0;    //已发送的字节
-    int bytes_to_send = m_write_idx;    //需要发送的字节数
+    int temp;
+    int byte_have_send; //已经发送的字节数
+    int byte_to_send = m_write_idx;   //将要发送的字节数
 
-    if(bytes_to_send == 0){
-        //没有要发送的数据，这一次响应结束。重新关注读事件，准备处理下一个请求
-        modfd(m_epollfd, m_sockfd, EPOLLIN);
+    if(byte_to_send == 0){
+        modfd(m_epollfd,m_sockfd,EPOLLIN);
         init();
         return true;
     }
 
-    while(true) {
-        
+    while(true){
+        //分散写
+        temp = writev(m_sockfd, m_iv, m_iv_count);
+        if(temp <= -1){
+            //EAGAIN 或 EWOULDBLOCK：资源暂时不可用。如果文件描述符是非阻塞的，此错误表示当前没有可以写入的缓冲区。
+            //如果TCP写缓冲区没有空间，则等待下一轮EPOLLOUT事件，虽然在此期间服务器无法立即接收到同一客户端的下一个请求，但是可以保证连接完整性
+            if(errno == EAGAIN){
+                modfd(m_epollfd,m_sockfd,EPOLLOUT);
+            }
+            unmap();//取消映射
+            return false;
+        }
+        byte_to_send -= temp;
+        byte_have_send += temp;
+
+        if(byte_to_send <= 0){
+            //发送HTTP响应成功，根据HTTP请求中的Connection字段决定是否立即关闭连接
+            unmap();
+            if(m_linger){
+                init();
+                modfd(m_epollfd, m_sockfd, EPOLLIN);
+                return true;
+            }else{
+                modfd(m_epollfd, m_sockfd, EPOLLIN);
+                return false;
+            }
+        }
     }
 }
 

@@ -18,9 +18,11 @@ public:
     void init(int sockfd, const sockaddr_in& addr);
     void init();
     void close_connect();
-    void parseMsg();
     bool write();
     bool read();
+    HTTP_RESULT parseRead();
+    bool makeResponse(HTTP_RESULT result);
+    void process();
 public:
     static int m_epollfd;
     static int m_user_count; 
@@ -33,6 +35,7 @@ private:
     int m_write_idx;
     struct iovec m_iv[2];
     int m_iv_count;
+    bool m_linger;
 }
 
 
