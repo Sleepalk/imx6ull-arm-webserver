@@ -117,8 +117,7 @@ int epoll_wait(int epfd, struct epoll_event* event, int maxevents, int timeout) 
 ==============================================================================================================================================================
 
 HTTP格式
-![image](https://github.com/user-attachments/assets/67901af0-f90e-4567-8e43-2d973d77ebc6)
-![alt text](image-2.png)
+![alt text](image-4.png)
 
 writev() 和 write() 的区别
 ![alt text](image-3.png)

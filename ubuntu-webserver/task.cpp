@@ -80,6 +80,11 @@ void task::init(){
     m_write_idx = 0;
     memset(recvBuf,0,sizeof(recvBuf));
     m_linger = false;   //默认不保持连接
+    m_check_state = CHECK_STATE::CHECK_STATE_REQUESTLINE;   //请求行
+    m_check_index = 0;  //当前解析字符的下标
+    m_start_line = 0;   //当前正在解析的行的起始位置
+    m_url = 0;          //解析到的url
+    m_method = METHOD::GET;     //请求的方式，默认为GET
 }
 
 /*
@@ -108,7 +113,96 @@ void task::close_connect(){
 */
 HTTP_RESULT task::parseRead()
 {
-    
+    LINE_STATE line_state = LINE_OK;
+    HTTP_RESULT ret = NO_REQUEST;
+    char* text = 0;
+    while(((m_check_state == CHECK_STATE_REQUESTBODY) && (line_state == LINE_OK)) || (line_state = parse_line()) == LINE_OK){
+        //解析到了一行完整数据 或者 解析到了请求体, 都说明数据完整
+
+        //拿到刚刚解析到的一行数据
+        text = get_line();
+        m_start_line = m_check_index;
+
+        std::cout << "get a line: %s" << text << std::endl; 
+
+        switch (m_check_state)
+        {
+        case CHECK_STATE_REQUESTLINE :{
+            //请求行
+
+            break;
+        }
+        case CHECK_STATE_REQUESTHEAD :{
+            //请求头
+            break;
+        }
+        case CHECK_STATE_REQUESTBODY :{
+            //请求体
+            break;
+        }
+        default:
+            break;
+        }
+    }
+}
+
+/* 解析具体的一行 */
+LINE_STATE task::parse_line()
+{
+    char curTemp;
+    for(;m_check_index < m_read_idx; m_check_index++){
+        temp = recvBuf[m_check_index];
+        if(temp == '\r'){
+            if((m_check_index + 1) == m_read_idx){
+                return LINE_OPEN;
+            }
+            if(recvBuf[m_check_index + 1] == '\n'){
+                recvBuf[m_check_index++] = '\0';
+                recvBuf[m_check_index++] = '\0';
+                return LINE_OK;
+            }
+            return LINE_BAD;
+        }else if(temp == '\n'){
+            if(m_check_index == 0)
+                return LINE_BAD;
+            if(recvBuf[m_check_index - 1] == '\r'){
+                recvBuf[m_check_index - 1] = '\0';
+                recvBuf[m_check_index++] = '\0';
+                return LINE_OK;
+            }   
+            else
+                return LINE_BAD;
+        }
+    }
+    return LINE_OPEN;
+}
+
+/* 返回一行数据，\0 结束 */
+char *task::get_line()
+{
+    return recvBuf + m_start_line;
+}
+
+/*
+    方法：parse_request_line
+    描述：解析请求行,获得请求方法，目标URL，HTTP版本
+    参数：text          //解析的文本
+    返回值：HTTP_RESULT     //解析出来的HTTP处理结果，供组装请求使用
+    by liuyingen 2024.12.17
+*/
+HTTP_RESULT task::parse_request_line(char* text)
+{
+    // GET /index.html HTTP/1.1
+    m_url = strpbrk(text,"\t");
+    *m_url++ = '\0';        //  GET\0/index.html\tHTTP/1.1 , m_url执行完++后指向/index.html\tHTTP/1.1
+    char* curMethod = text;
+    if(strcasecmp(curMethod,"GET") == 0){
+        m_method = curMethod;
+    }else{
+        return HTTP_RESULT::BAD_REQUEST;
+    }
+
+
 }
 
 /*

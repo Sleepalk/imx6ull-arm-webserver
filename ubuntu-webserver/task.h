@@ -21,6 +21,10 @@ public:
     bool write();
     bool read();
     HTTP_RESULT parseRead();
+    LINE_STATE parse_line();
+    char* get_line();
+    HTTP_RESULT parse_request_line(char* text);
+
     bool makeResponse(HTTP_RESULT result);
     void process();
 public:
@@ -36,6 +40,13 @@ private:
     struct iovec m_iv[2];
     int m_iv_count;
     bool m_linger;
+
+    CHECK_STATE m_check_state;
+    int m_check_index;
+    int m_start_line;
+
+    char* m_url;
+    METHOD m_method;
 }
 
 
