@@ -47,6 +47,7 @@ private:
 
     char* m_url;
     METHOD m_method;
+    char* m_version;
 }
 
 

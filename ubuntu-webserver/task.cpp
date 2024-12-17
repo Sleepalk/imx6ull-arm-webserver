@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <fcntl.h>
+#include <string.h>
 
 task::task(){
 
@@ -85,6 +86,7 @@ void task::init(){
     m_start_line = 0;   //当前正在解析的行的起始位置
     m_url = 0;          //解析到的url
     m_method = METHOD::GET;     //请求的方式，默认为GET
+    m_version = 0;      //解析到的HTTP版本
 }
 
 /*
@@ -201,8 +203,28 @@ HTTP_RESULT task::parse_request_line(char* text)
     }else{
         return HTTP_RESULT::BAD_REQUEST;
     }
+    m_version = strpbrk(m_url,"\t");
+    if(!m_version){
+        return HTTP_RESULT::BAD_REQUEST;
+    }
+    *m_version++ = '\0';        // /index.html\0HTTP/1.1
+    if(strcasecmp(m_version,"HTTP/1.1") != 0){
+        return HTTP_RESULT::BAD_REQUEST;
+    }
+    /**
+     * http://192.168.110.129:10000/index.html
+    */
+    if(strncasecmp(m_url,"HTTP/1.1",7) == 0){
+        m_url += 7;
+        m_url = strchr(m_url,'/');  //192.168.110.129:10000/index.html查找/的位置并返回该位置的指针,此时m_url = /index.html
+    }
+    if(!m_url || m_url[0] != '/'){
+        return HTTP_RESULT::BAD_REQUEST;
+    }
 
-
+    //更新主状态机
+    m_check_state = CHECK_STATE::CHECK_STATE_REQUESTHEAD;   //请求头
+    return HTTP_RESULT::NO_REQUEST;
 }
 
 /*
