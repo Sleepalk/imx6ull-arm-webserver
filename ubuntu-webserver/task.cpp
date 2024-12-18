@@ -6,6 +6,7 @@
 #include <sys/uio.h>
 #include <fcntl.h>
 #include <string.h>
+#include <stdarg.h>
 
 task::task(){
 
@@ -144,6 +145,8 @@ HTTP_RESULT task::parseRead()
             ret = parse_request_header(text);
             if(ret == HTTP_RESULT::BAD_REQUEST){
                 return HTTP_RESULT::BAD_REQUEST;
+            }else if(ret == HTTP_RESULT::GET_REQUEST){
+                return Get_File();
             }
             break;
         }
@@ -152,7 +155,10 @@ HTTP_RESULT task::parseRead()
             ret = parse_request_content(text);
             if(ret == HTTP_RESULT::BAD_REQUEST){
                 return HTTP_RESULT::BAD_REQUEST;
+            }else if(ret == HTTP_RESULT::GET_REQUEST){
+                return Get_File();
             }
+            line_state = LINE_OPEN;
             break;
         }
         default:
@@ -342,6 +348,18 @@ bool task::makeResponse(HTTP_RESULT result)
 }
 
 /*
+    方法：Get_File
+    描述：解析到完整的请求头或者请求体之后，开始映射文件地址，返回FILE_REQUEST文件请求，供组装函数MakeResponse调用
+    参数: 无
+    返回值：HTTP_RESULT
+    by liuyingen 2024.12.18
+*/
+HTTP_RESULT task::Get_File()
+{
+    return HTTP_RESULT();
+}
+
+/*
     方法：add_Response
     描述：向写缓冲区中写入数据
     参数:
@@ -354,7 +372,14 @@ bool task::add_Response(const char *Format, ...)
     if(m_write_idx >= WRITE_BUFFER_SIZE){
         return false;
     }
-    return false;
+    va_list arg_list;
+    va_start(arg_list, Format);
+    int len = vsnprintf(writeBuf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, Format, arg_list);
+    if(len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx)){
+        return false;
+    }
+    m_write_idx += len;
+    return true;
 }
 
 /*

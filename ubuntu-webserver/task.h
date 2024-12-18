@@ -28,6 +28,7 @@ public:
     HTTP_RESULT parse_request_content(char* text);
 
     bool makeResponse(HTTP_RESULT result);
+    HTTP_RESULT Get_File();
     bool add_Response(const char* Format,...);
 
     void process();
