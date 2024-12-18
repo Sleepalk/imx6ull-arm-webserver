@@ -24,8 +24,12 @@ public:
     LINE_STATE parse_line();
     char* get_line();
     HTTP_RESULT parse_request_line(char* text);
+    HTTP_RESULT parse_request_header(char* text);
+    HTTP_RESULT parse_request_content(char* text);
 
     bool makeResponse(HTTP_RESULT result);
+    bool add_Response(const char* Format,...);
+
     void process();
 public:
     static int m_epollfd;
@@ -48,6 +52,8 @@ private:
     char* m_url;
     METHOD m_method;
     char* m_version;
+    int m_content_length;
+    char* m_host;
 }
 
 

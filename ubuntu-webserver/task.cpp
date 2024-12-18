@@ -87,6 +87,8 @@ void task::init(){
     m_url = 0;          //解析到的url
     m_method = METHOD::GET;     //请求的方式，默认为GET
     m_version = 0;      //解析到的HTTP版本
+    m_content_length = 0;       //请求消息的总长度
+    m_host = 0;         //主机名
 }
 
 /*
@@ -131,21 +133,33 @@ HTTP_RESULT task::parseRead()
         {
         case CHECK_STATE_REQUESTLINE :{
             //请求行
-
+            ret = parse_request_line(text);
+            if(ret == HTTP_RESULT::BAD_REQUEST){
+                return HTTP_RESULT::BAD_REQUEST;
+            }
             break;
         }
         case CHECK_STATE_REQUESTHEAD :{
             //请求头
+            ret = parse_request_header(text);
+            if(ret == HTTP_RESULT::BAD_REQUEST){
+                return HTTP_RESULT::BAD_REQUEST;
+            }
             break;
         }
         case CHECK_STATE_REQUESTBODY :{
             //请求体
+            ret = parse_request_content(text);
+            if(ret == HTTP_RESULT::BAD_REQUEST){
+                return HTTP_RESULT::BAD_REQUEST;
+            }
             break;
         }
         default:
             break;
         }
     }
+    return HTTP_RESULT::NO_REQUEST;
 }
 
 /* 解析具体的一行 */
@@ -188,7 +202,7 @@ char *task::get_line()
 /*
     方法：parse_request_line
     描述：解析请求行,获得请求方法，目标URL，HTTP版本
-    参数：text          //解析的文本
+    参数：text          //解析的文本,   GET HTTP://192.168.181.129:10000/index.html HTTP/1.1
     返回值：HTTP_RESULT     //解析出来的HTTP处理结果，供组装请求使用
     by liuyingen 2024.12.17
 */
@@ -228,6 +242,61 @@ HTTP_RESULT task::parse_request_line(char* text)
 }
 
 /*
+    方法：parse_request_header
+    描述：解析请求头
+    参数：text          //解析的文本
+    返回值：HTTP_RESULT     //解析出来的HTTP处理结果，供组装请求使用
+    by liuyingen 2024.12.17
+*/
+HTTP_RESULT task::parse_request_header(char *text)
+{
+    if(text[0] == '\0'){
+        if(m_content_length != 0){
+            //请求体里面有内容
+            m_check_state = CHECK_STATE::CHECK_STATE_REQUESTBODY;
+            return HTTP_RESULT::NO_REQUEST;
+        }
+        return HTTP_RESULT::GET_REQUEST;
+    }else if(strncasecmp(text, "Connection:", 11) == 0){
+        text += 11;
+        text += strspn(text, "\t");
+        if(strncasecmp(text, "keep-alive", 10) == 0){
+            m_linger = true;
+        }
+        return HTTP_RESULT::NO_REQUEST;
+    }else if(strncasecmp(text, "Host:", 5) == 0){
+        text += 5;
+        text += strspn(text, "\t");
+        m_host = text;
+        return HTTP_RESULT::NO_REQUEST;
+    }else if(strncasecmp(text, "Content-Length:", 15) == 0){
+        text += 15;
+        text += strspn(text, "\t");
+        m_content_length = atoi(text);
+        return HTTP_RESULT::NO_REQUEST;
+    }else{
+        printf("unknow header line: %s\n", text);
+        return HTTP_RESULT::NO_REQUEST;
+    }
+}
+
+/*
+    方法：parse_request_content
+    描述：解析请求体
+    参数：text              //解析的文本
+    返回值：HTTP_RESULT     //解析出来的HTTP处理结果，供组装请求使用
+    by liuyingen 2024.12.17
+*/
+HTTP_RESULT task::parse_request_content(char *text)
+{
+    if((m_check_index + m_content_length) <= m_read_idx){
+        text[m_content_length] = '\0';
+        return HTTP_RESULT::GET_REQUEST;
+    }
+    return HTTP_RESULT::NO_REQUEST;
+}
+
+/*
     方法：makeResponse
     描述：组装响应请求
     参数：
@@ -237,6 +306,54 @@ HTTP_RESULT task::parse_request_line(char* text)
 */
 bool task::makeResponse(HTTP_RESULT result)
 {
+    switch (result)
+    {
+    case GET_REQUEST:{
+        //获取到了一个完整的请求
+        break;
+    }
+    case BAD_REQUEST:{
+        //客户端请求语法出错
+        break;
+    }
+    case NO_RESOURCE:{
+        //服务器没有资源
+        break;
+    }
+    case FORBIDDEN_REQUEST:{
+        //客户端对资源没有足够的权限
+        break;
+    }
+    case FILE_REQUEST:{
+        //文件请求
+        break;
+    }
+    case INTERNAL_ERROR:{
+        //服务端内部错误
+        break;
+    }
+    case CLOSEED_CONNECTION:{
+        //客户端关闭连接
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+/*
+    方法：add_Response
+    描述：向写缓冲区中写入数据
+    参数:
+        Format      //可变长参数
+    返回值：bool
+    by liuyingen 2024.12.18
+*/
+bool task::add_Response(const char *Format, ...)
+{
+    if(m_write_idx >= WRITE_BUFFER_SIZE){
+        return false;
+    }
     return false;
 }
 
