@@ -55,6 +55,9 @@ private:
     char* m_version;
     int m_content_length;
     char* m_host;
+    char m_real_file[200];
+    struct stat m_file_stat;
+    char* m_file_address;
 }
 
 

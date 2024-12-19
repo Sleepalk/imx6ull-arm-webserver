@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdarg.h>
 
+const char* doc_root = "/home/sleepwalk/ubuntu-webserver/resources"
+
 task::task(){
 
 }
@@ -90,6 +92,9 @@ void task::init(){
     m_version = 0;      //解析到的HTTP版本
     m_content_length = 0;       //请求消息的总长度
     m_host = 0;         //主机名
+    memset(m_real_file,0,sizeof(m_real_file));
+    memset(m_file_stat,0,sizeof(m_file_stat));
+    m_file_address = 0;
 }
 
 /*
@@ -349,14 +354,37 @@ bool task::makeResponse(HTTP_RESULT result)
 
 /*
     方法：Get_File
-    描述：解析到完整的请求头或者请求体之后，开始映射文件地址，返回FILE_REQUEST文件请求，供组装函数MakeResponse调用
+    描述：解析到完整的请求头或者请求体之后，组装好请求文件的路径，然后判断文件的属性，如果文件对其他用户可读，
+        开始映射文件地址，返回FILE_REQUEST文件请求，供组装函数MakeResponse调用
     参数: 无
     返回值：HTTP_RESULT
     by liuyingen 2024.12.18
 */
 HTTP_RESULT task::Get_File()
 {
-    return HTTP_RESULT();
+    strcpy(m_real_file,doc_root);
+    int len = strlen(doc_root);
+    strncpy(m_real_file + len, m_url, 200-1-len);
+    if(stat(m_real_file, &m_file_stat) < 0){
+        //没有资源
+        return HTTP_RESULT::NO_RESOURCE;
+    }
+
+    //检查文件是否有可以被其他用户读取的权限
+    if(!(m_file_stat.st_mode & S_IROTH)){
+        return HTTP_RESULT::FORBIDDEN_REQUEST;
+    }
+
+    //判断文件是否是目录
+    if(S_ISDIR(m_file_stat.st_mode)){
+        return HTTP_RESULT::BAD_REQUEST;
+    }
+
+    int fd = open(m_real_file, O_RDONLY);
+    //映射文件地址
+    m_file_address = ( char* )mmap( 0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0 );
+    close( fd );
+    return HTTP_RESULT::FILE_REQUEST;
 }
 
 /*
