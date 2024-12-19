@@ -30,6 +30,8 @@ public:
     bool makeResponse(HTTP_RESULT result);
     HTTP_RESULT Get_File();
     bool add_Response(const char* Format,...);
+    bool add_status_line(int state, const char* title);
+    bool add_headers(int content_length);
 
     void process();
 public:

@@ -411,6 +411,33 @@ bool task::add_Response(const char *Format, ...)
 }
 
 /*
+    方法：add_status_line
+    描述：组装状态行，并写入到写缓冲区中
+    参数：
+        state       //状态
+        title       //标题
+    返回值：bool
+    by liuyingen 2024.12.19
+*/
+bool task::add_status_line(int state, const char *title)
+{
+    return add_Response("%s %d %s","HTTP/1.1", state, title);
+}
+
+/*
+    方法：add_headers
+    描述：组装响应头，并写入到写缓冲区中
+    参数：
+        content_length       //文本长度
+    返回值：bool
+    by liuyingen 2024.12.19
+*/
+bool task::add_headers(int content_length)
+{
+    return false;
+}
+
+/*
     方法：process
     描述：处理HTTP请求，包括解析HTTP请求和组装响应报文，由线程池的工作线程调用
     参数：无
