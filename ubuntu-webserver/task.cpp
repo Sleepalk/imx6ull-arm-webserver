@@ -10,6 +10,16 @@
 
 const char* doc_root = "/home/sleepwalk/ubuntu-webserver/resources"
 
+const char* ok_200_title = "OK";
+const char* error_400_title = "Bad Request\n";
+const char* error_400_form = "Your request has bad syntax or is inherently impossible to satisfy.\n"
+const char* error_403_title = "Forbidden";
+const char* error_403_form = "You do not have permission to get file from this server.\n"
+const char* error_404_title = "Not Found";
+const char* error_404_form = "The requested file was not found on this server.\n";
+const char* error_500_title = "Internal Error";
+const char* error_500_form = "There was an unusual problem serving the requested file.\n"
+
 task::task(){
 
 }
@@ -319,10 +329,6 @@ bool task::makeResponse(HTTP_RESULT result)
 {
     switch (result)
     {
-    case GET_REQUEST:{
-        //获取到了一个完整的请求
-        break;
-    }
     case BAD_REQUEST:{
         //客户端请求语法出错
         break;
@@ -341,10 +347,6 @@ bool task::makeResponse(HTTP_RESULT result)
     }
     case INTERNAL_ERROR:{
         //服务端内部错误
-        break;
-    }
-    case CLOSEED_CONNECTION:{
-        //客户端关闭连接
         break;
     }
     default:
@@ -434,7 +436,15 @@ bool task::add_status_line(int state, const char *title)
 */
 bool task::add_headers(int content_length)
 {
-    return false;
+    //文本长度
+    bool result1 = add_Response("Content-Length: %d\r\n", content_length);
+    //文本类型
+    bool result2 = add_Response("Content-Type:%s\r\n", "text/html");
+    //连接方式
+    bool result3 = add_Response("Connection: %s\r\n", (m_linger == true) ? "keep-alive" : "close");
+    //空白行
+    bool result4 = add_Response("\r\n");
+    return result1 && result2 && result3 && result4;
 }
 
 /*
