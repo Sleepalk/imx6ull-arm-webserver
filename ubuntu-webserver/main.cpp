@@ -14,8 +14,11 @@
 #include <vector>
 #include <poll.h>
 #include <sys/epoll.h>
+#include "task.h"
 #define local_port      8888
 #define FD_MAXSIZE      4
+#define MAX_EVENT_NUMBER    10000
+#define MAX_FD          65535//最大的文件描述符个数
 
 //  http://192.168.181.129:8888/index.html
 
@@ -346,7 +349,7 @@ int main(){
 }*/
 
 //IO多路复用,epoll方式
-
+/*
 int set_nonblocking(int sockfd){
     int flags = fcntl(sockfd, F_GETFL, 0);
     if(flags == -1) { perror("set_nonblocking error!\n"); return -1;}
@@ -420,5 +423,85 @@ int main(){
     close(epollfd);
     return 0;
 }
+*/
 
+//webServer,epoll方式，暂时还没有添加线程池
+int set_nonblocking(int sockfd){
+    int flags = fcntl(sockfd, F_GETFD, 0);
+    if(flags == -1){
+        std::cout << "set_nonblocking error!" << std::endl;
+        return -1;
+    }
+    flags |= O_NONBLOCK;
+    if(fcntl(sockfd, F_SETFD, &flags) == -1){
+        std::cout << "set_nonblocking error!" << std::endl;
+        return -1;
+    }
+    return 0;
+}
 
+int main(){
+    int listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(listenfd == -1) { std::cout << "create listenfd error!" << std::endl; return -1;}
+
+    if(set_nonblocking(listenfd) == -1) { std::cout << "set_nonblocking error!" << std::endl; }
+
+    int reuse = 1;
+    if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse)) == -1){ std::cout << "setsockopt error!" << std::endl; }
+
+    struct sockaddr_in serverAddr;
+    serverAddr.sin_port = htons(local_port);
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    int ret = bind(listenfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
+    if(ret == -1) { std::cout << "listenfd bind error!" << std::endl; return -1; }
+
+    ret = listen(listenfd, FD_MAXSIZE);
+    if(ret == -1) { std::cout << "listenfd listen error!" << std::endl; return -1; }
+
+    task* task[MAX_FD] = new task();
+    int m_epollfd = epoll_create(5);
+    epoll_event event[MAX_EVENT_NUMBER];
+    addfd(m_epollfd, listenfd, false);
+    task::m_epollfd = m_epollfd;
+
+    while(true){
+        int num = epoll_wait(m_epollfd, event, MAX_EVENT_NUMBER, -1);
+        if((num < 0) && (errno != EINTR)){
+            std::cout << "epoll error" << std::endl;
+            break;
+        }
+
+        for(auto i = 0; i < num; ++i){
+            int sockfd = event[i].data.fd;
+            if(sockfd == listenfd){
+                sockaddr_in client_address;
+                socklen_t client_addrlen = sizeof(client_address);
+                int connfd = accept(listenfd,(struct sockaddr*)&client_address,&client_addrlen);
+                if(task::m_user_count >= MAX_FD){
+                    close(connfd);
+                    continue;
+                }
+                task[connfd]->init(connfd,client_address);
+            }else if(event[i].events & (EPOLLHUP | EPOLLERR)){
+                task[sockfd]->close_connect();
+            }else if(event[i].events & EPOLLIN){
+                if(task[sockfd]->read()){
+                    task[sockfd]->process();
+                }else{
+                    task[sockfd]->close_connect();
+                }
+            }else if(event[i].events & EPOLLOUT){
+                if(!task[sockfd]->write()){
+                    task[sockfd]->close_connect();
+                }
+            }
+        }
+
+    }
+
+    close(m_epollfd);
+    close(listenfd);
+    delete[] task;
+    return 0;
+}

@@ -32,6 +32,7 @@ public:
     bool add_Response(const char* Format,...);
     bool add_status_line(int state, const char* title);
     bool add_headers(int content_length);
+    bool add_content(const char* content);
 
     void process();
 public:

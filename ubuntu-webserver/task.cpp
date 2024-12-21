@@ -331,27 +331,59 @@ bool task::makeResponse(HTTP_RESULT result)
     {
     case BAD_REQUEST:{
         //客户端请求语法出错
+        add_status_line(400, error_400_title);
+        add_headers(strlen(error_400_form));
+        if(!add_content(error_400_form)){
+            return false;
+        }
         break;
     }
     case NO_RESOURCE:{
         //服务器没有资源
+        add_status_line(404, error_404_title);
+        add_headers(strlen(error_404_form));
+        if(!add_content(error_404_form)){
+            return false;
+        }
         break;
     }
     case FORBIDDEN_REQUEST:{
         //客户端对资源没有足够的权限
+        add_status_line(403, error_403_title);
+        add_headers(strlen(error_403_form));
+        if(!add_content(error_403_form)){
+            return false;
+        }
         break;
     }
     case FILE_REQUEST:{
         //文件请求
+        add_status_line(200, ok_200_title);
+        add_headers(m_file_stat.st_size);
+        m_iv[0].iov_base = m_write_buf;
+        m_iv[0].iov_len = m_write_idx;
+        m_iv[1].iov_base = m_file_address;
+        m_iv[1].iov_len = m_file_stat.st_size;
+        m_iv_count = 2;
+        return true;
         break;
     }
     case INTERNAL_ERROR:{
         //服务端内部错误
+        add_status_line(500, error_500_title);
+        add_headers(strlen(error_50_form));
+        if(!add_content(error_500_form)){
+            return false;
+        }
         break;
     }
     default:
         break;
     }
+    m_iv[0].iov_base = m_write_buf;
+    m_iv[0].iov_len = m_write_idx;
+    m_iv_count = 1;
+    return true;
 }
 
 /*
@@ -445,6 +477,19 @@ bool task::add_headers(int content_length)
     //空白行
     bool result4 = add_Response("\r\n");
     return result1 && result2 && result3 && result4;
+}
+
+/*
+    方法：add_content
+    描述：组装文本内容，并写入到写缓冲区中
+    参数：
+        content     //文本内容
+    返回值：bool 
+    by liuyingen 2024.12.21
+*/
+bool task::add_content(const char *content)
+{
+    return add_Response("%s", content);
 }
 
 /*
