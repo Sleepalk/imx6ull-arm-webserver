@@ -1,32 +1,37 @@
 #include "task.h"
 #include <iostream>
+#include<sys/epoll.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
 #include <string.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/uio.h>
 #include <fcntl.h>
-#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
 #include <stdarg.h>
+#include <errno.h>
+#include <sys/uio.h>
+#include <strings.h>
 
-const char* doc_root = "/home/sleepwalk/ubuntu-webserver/resources"
+const char* doc_root = "/home/sleepwalk/ubuntu-webServer/resources";
 
 const char* ok_200_title = "OK";
 const char* error_400_title = "Bad Request\n";
-const char* error_400_form = "Your request has bad syntax or is inherently impossible to satisfy.\n"
+const char* error_400_form = "Your request has bad syntax or is inherently impossible to satisfy.\n";
 const char* error_403_title = "Forbidden";
-const char* error_403_form = "You do not have permission to get file from this server.\n"
+const char* error_403_form = "You do not have permission to get file from this server.\n";
 const char* error_404_title = "Not Found";
 const char* error_404_form = "The requested file was not found on this server.\n";
 const char* error_500_title = "Internal Error";
-const char* error_500_form = "There was an unusual problem serving the requested file.\n"
+const char* error_500_form = "There was an unusual problem serving the requested file.\n";
 
-task::task(){
-
-}
-
-task::~task(){
-
-}
+int task::m_epollfd = -1;
+int task::m_user_count = 0;
 
 void set_nonblocking(int sockfd){
     int flags = fcntl(sockfd, F_GETFL);
@@ -41,7 +46,7 @@ void addfd(int epollfd, int sockfd, bool one_shot){
     if(one_shot){
         event.events |= EPOLLONESHOT;       //单次触发事件，读事件被触发之后，从epoll中移除，避免多个线程调用该文件描述符
     }
-    epll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &event);
+    epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &event);
     //设置文件描述符非阻塞
     set_nonblocking(sockfd);
 }
@@ -58,6 +63,14 @@ void modfd(int epollfd, int sockfd, int ev){
     epoll_ctl(epollfd, EPOLL_CTL_MOD, sockfd, &event);
 }
 
+task::task()
+{
+}
+
+task::~task()
+{
+}
+
 /*
     方法：init
     描述：初始化客户端连接，把客户端文件描述符添加到epoll中
@@ -67,12 +80,13 @@ void modfd(int epollfd, int sockfd, int ev){
     返回值：void
     by liuyingen 2024.12.11
 */
-void task::init(int sockfd, const sockaddr_in& addr){
+void task::init(int sockfd, const sockaddr_in &addr)
+{
     m_sockfd = sockfd;
 
     //设置地址端口复用
     int reuse = 1;
-    setsockopt(sockfd, SOL_SOCK, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse));
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse));
 
     addfd(m_epollfd, sockfd, true);
     m_user_count++;
@@ -103,7 +117,7 @@ void task::init(){
     m_content_length = 0;       //请求消息的总长度
     m_host = 0;         //主机名
     memset(m_real_file,0,sizeof(m_real_file));
-    memset(m_file_stat,0,sizeof(m_file_stat));
+    //memset(m_file_stat,0,sizeof(m_file_stat));
     m_file_address = 0;
 }
 
@@ -188,8 +202,8 @@ LINE_STATE task::parse_line()
 {
     char curTemp;
     for(;m_check_index < m_read_idx; m_check_index++){
-        temp = recvBuf[m_check_index];
-        if(temp == '\r'){
+        curTemp = recvBuf[m_check_index];
+        if(curTemp == '\r'){
             if((m_check_index + 1) == m_read_idx){
                 return LINE_OPEN;
             }
@@ -199,7 +213,7 @@ LINE_STATE task::parse_line()
                 return LINE_OK;
             }
             return LINE_BAD;
-        }else if(temp == '\n'){
+        }else if(curTemp == '\n'){
             if(m_check_index == 0)
                 return LINE_BAD;
             if(recvBuf[m_check_index - 1] == '\r'){
@@ -234,7 +248,7 @@ HTTP_RESULT task::parse_request_line(char* text)
     *m_url++ = '\0';        //  GET\0/index.html\tHTTP/1.1 , m_url执行完++后指向/index.html\tHTTP/1.1
     char* curMethod = text;
     if(strcasecmp(curMethod,"GET") == 0){
-        m_method = curMethod;
+        m_method = METHOD::GET;
     }else{
         return HTTP_RESULT::BAD_REQUEST;
     }
@@ -371,7 +385,7 @@ bool task::makeResponse(HTTP_RESULT result)
     case INTERNAL_ERROR:{
         //服务端内部错误
         add_status_line(500, error_500_title);
-        add_headers(strlen(error_50_form));
+        add_headers(strlen(error_500_form));
         if(!add_content(error_500_form)){
             return false;
         }
@@ -436,7 +450,7 @@ bool task::add_Response(const char *Format, ...)
     }
     va_list arg_list;
     va_start(arg_list, Format);
-    int len = vsnprintf(writeBuf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, Format, arg_list);
+    int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, Format, arg_list);
     if(len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx)){
         return false;
     }
@@ -490,6 +504,15 @@ bool task::add_headers(int content_length)
 bool task::add_content(const char *content)
 {
     return add_Response("%s", content);
+}
+
+void task::unmap()
+{
+    if( m_file_address )
+    {
+        munmap( m_file_address, m_file_stat.st_size );
+        m_file_address = 0;
+    }
 }
 
 /*

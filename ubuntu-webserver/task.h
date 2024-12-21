@@ -3,6 +3,7 @@
 
 #include <sys/stat.h>
 #include <netinet/in.h>
+#include <sys/mman.h>
 #include "commonMsg.h"
 
 /*
@@ -33,16 +34,18 @@ public:
     bool add_status_line(int state, const char* title);
     bool add_headers(int content_length);
     bool add_content(const char* content);
+    void unmap();
 
     void process();
 public:
     static int m_epollfd;
     static int m_user_count; 
-    static int READ_BUFFER_SIZE = 2048;
-    static int WRITE_BUFFER_SIZE = 1024;
+    static const int READ_BUFFER_SIZE = 2048;
+    static const int WRITE_BUFFER_SIZE = 1024;
 private:
     int m_sockfd = -1;
     char recvBuf[READ_BUFFER_SIZE];
+    char m_write_buf[WRITE_BUFFER_SIZE];
     int m_read_idx;
     int m_write_idx;
     struct iovec m_iv[2];
@@ -61,9 +64,5 @@ private:
     char m_real_file[200];
     struct stat m_file_stat;
     char* m_file_address;
-}
-
-
-
-
+};
 #endif

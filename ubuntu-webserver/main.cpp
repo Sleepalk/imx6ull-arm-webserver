@@ -426,25 +426,21 @@ int main(){
 */
 
 //webServer,epoll方式，暂时还没有添加线程池
-int set_nonblocking(int sockfd){
-    int flags = fcntl(sockfd, F_GETFD, 0);
-    if(flags == -1){
-        std::cout << "set_nonblocking error!" << std::endl;
-        return -1;
-    }
-    flags |= O_NONBLOCK;
-    if(fcntl(sockfd, F_SETFD, &flags) == -1){
-        std::cout << "set_nonblocking error!" << std::endl;
-        return -1;
-    }
-    return 0;
-}
+extern void set_nonblocking(int sockfd);
+
+//添加文件描述符到epoll中
+extern void addfd(int epollfd, int sockfd, bool one_shot);
+//从epoll中删除文件描述符
+extern void removefd(int epollfd, int sockfd);
+//从epoll中修改文件描述符
+extern void modfd(int epollfd, int sockfd, int ev);
 
 int main(){
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
     if(listenfd == -1) { std::cout << "create listenfd error!" << std::endl; return -1;}
 
-    if(set_nonblocking(listenfd) == -1) { std::cout << "set_nonblocking error!" << std::endl; }
+    set_nonblocking(listenfd);
+    //if(set_nonblocking(listenfd) == -1) { std::cout << "set_nonblocking error!" << std::endl; }
 
     int reuse = 1;
     if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse)) == -1){ std::cout << "setsockopt error!" << std::endl; }
@@ -459,7 +455,7 @@ int main(){
     ret = listen(listenfd, FD_MAXSIZE);
     if(ret == -1) { std::cout << "listenfd listen error!" << std::endl; return -1; }
 
-    task* task[MAX_FD] = new task();
+    task* tasks = new task[MAX_FD];
     int m_epollfd = epoll_create(5);
     epoll_event event[MAX_EVENT_NUMBER];
     addfd(m_epollfd, listenfd, false);
@@ -482,18 +478,18 @@ int main(){
                     close(connfd);
                     continue;
                 }
-                task[connfd]->init(connfd,client_address);
+                tasks[connfd].init(connfd,client_address);
             }else if(event[i].events & (EPOLLHUP | EPOLLERR)){
-                task[sockfd]->close_connect();
+                tasks[sockfd].close_connect();
             }else if(event[i].events & EPOLLIN){
-                if(task[sockfd]->read()){
-                    task[sockfd]->process();
+                if(tasks[sockfd].read()){
+                    tasks[sockfd].process();
                 }else{
-                    task[sockfd]->close_connect();
+                    tasks[sockfd].close_connect();
                 }
             }else if(event[i].events & EPOLLOUT){
-                if(!task[sockfd]->write()){
-                    task[sockfd]->close_connect();
+                if(!tasks[sockfd].write()){
+                    tasks[sockfd].close_connect();
                 }
             }
         }
@@ -502,6 +498,6 @@ int main(){
 
     close(m_epollfd);
     close(listenfd);
-    delete[] task;
+    delete[] tasks; 
     return 0;
 }
