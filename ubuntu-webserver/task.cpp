@@ -34,9 +34,9 @@ int task::m_epollfd = -1;
 int task::m_user_count = 0;
 
 void set_nonblocking(int sockfd){
-    int flags = fcntl(sockfd, F_GETFL);
-    flags |= O_NONBLOCK;
-    fcntl(sockfd, F_SETFL);
+    int flags = fcntl(sockfd,F_GETFL);
+    flags = flags | O_NONBLOCK;
+    //fcntl(sockfd,F_SETFL,flags);//设置fd的属性
 } 
 
 void addfd(int epollfd, int sockfd, bool one_shot){
@@ -455,6 +455,7 @@ bool task::add_Response(const char *Format, ...)
         return false;
     }
     m_write_idx += len;
+    va_end( arg_list );
     return true;
 }
 
@@ -574,7 +575,7 @@ bool task::write()
         byte_to_send -= temp;
         byte_have_send += temp;
 
-        if(byte_to_send <= 0){
+        if(byte_to_send <= byte_have_send){
             //发送HTTP响应成功，根据HTTP请求中的Connection字段决定是否立即关闭连接
             unmap();
             if(m_linger){
@@ -616,6 +617,7 @@ bool task::read()
             return false;
         }
         m_read_idx += bytes_read;
+        return true;
     }
     return true;
 }
