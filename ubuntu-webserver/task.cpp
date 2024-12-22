@@ -157,7 +157,7 @@ HTTP_RESULT task::parseRead()
         text = get_line();
         m_start_line = m_check_index;
 
-        std::cout << "get a line: %s" << text << std::endl; 
+        std::cout << "get a line: " << text << std::endl; 
 
         switch (m_check_state)
         {
@@ -244,7 +244,7 @@ char *task::get_line()
 HTTP_RESULT task::parse_request_line(char* text)
 {
     // GET /index.html HTTP/1.1
-    m_url = strpbrk(text,"\t");
+    m_url = strpbrk(text," \t");
     *m_url++ = '\0';        //  GET\0/index.html\tHTTP/1.1 , m_url执行完++后指向/index.html\tHTTP/1.1
     char* curMethod = text;
     if(strcasecmp(curMethod,"GET") == 0){
@@ -252,7 +252,7 @@ HTTP_RESULT task::parse_request_line(char* text)
     }else{
         return HTTP_RESULT::BAD_REQUEST;
     }
-    m_version = strpbrk(m_url,"\t");
+    m_version = strpbrk(m_url," \t");
     if(!m_version){
         return HTTP_RESULT::BAD_REQUEST;
     }
@@ -294,19 +294,19 @@ HTTP_RESULT task::parse_request_header(char *text)
         return HTTP_RESULT::GET_REQUEST;
     }else if(strncasecmp(text, "Connection:", 11) == 0){
         text += 11;
-        text += strspn(text, "\t");
+        text += strspn(text, " \t");
         if(strncasecmp(text, "keep-alive", 10) == 0){
             m_linger = true;
         }
         return HTTP_RESULT::NO_REQUEST;
     }else if(strncasecmp(text, "Host:", 5) == 0){
         text += 5;
-        text += strspn(text, "\t");
+        text += strspn(text, " \t");
         m_host = text;
         return HTTP_RESULT::NO_REQUEST;
     }else if(strncasecmp(text, "Content-Length:", 15) == 0){
         text += 15;
-        text += strspn(text, "\t");
+        text += strspn(text, " \t");
         m_content_length = atoi(text);
         return HTTP_RESULT::NO_REQUEST;
     }else{
@@ -598,21 +598,21 @@ bool task::write()
 */
 bool task::read()
 {
-    if(m_read_idx >= READ_BUFFER_SIZE){
+    if( m_read_idx >= READ_BUFFER_SIZE ) {
         return false;
     }
     int bytes_read = 0;
     while(true) {
-        //从recvBuf + m_read_idx 位置开始读取数据往后保存,数据读取大小是READ_BUFFER_SIZE - m_read_idx
-        bytes_read = recv(m_sockfd, recvBuf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
-        if(bytes_read == 0){
-            //对方关闭连接
-            return false;
-        }else if(bytes_read == -1){
-            if( errno == EAGAIN || errno == EWOULDBLOCK){
-                //没有数据可读
+        // 从m_read_buf + m_read_idx索引出开始保存数据，大小是READ_BUFFER_SIZE - m_read_idx
+        bytes_read = recv(m_sockfd, recvBuf + m_read_idx, 
+        READ_BUFFER_SIZE - m_read_idx, 0 );
+        if (bytes_read == -1) {
+            if( errno == EAGAIN || errno == EWOULDBLOCK ) {
+                // 没有数据
                 break;
             }
+            return false;   
+        } else if (bytes_read == 0) {   // 对方关闭连接
             return false;
         }
         m_read_idx += bytes_read;
