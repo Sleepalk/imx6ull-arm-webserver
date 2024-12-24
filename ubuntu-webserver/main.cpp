@@ -14,7 +14,9 @@
 #include <vector>
 #include <poll.h>
 #include <sys/epoll.h>
+#include <signal.h>
 #include "task.h"
+#include "threadpool.h"
 #define local_port      8888
 #define FD_MAXSIZE      4
 #define MAX_EVENT_NUMBER    10000
@@ -425,8 +427,18 @@ int main(){
 }
 */
 
-//webServer,epoll方式，暂时还没有添加线程池
-extern void set_nonblocking(int sockfd);
+//webServer,epoll方式
+
+//添加信号捕捉
+void addsignal(int sig,void(handler)(int)){
+    struct sigaction sa;
+    memset(&sa,'\0',sizeof(sa));
+    sa.sa_handler = handler;
+    sigfillset(&sa.sa_mask);//设置所有信号集合,临时阻塞其他信号
+    sigaction(sig,&sa,NULL);
+}
+
+extern int set_nonblocking(int sockfd);
 
 //添加文件描述符到epoll中
 extern void addfd(int epollfd, int sockfd, bool one_shot);
@@ -439,8 +451,10 @@ int main(){
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
     if(listenfd == -1) { std::cout << "create listenfd error!" << std::endl; return -1;}
 
-    set_nonblocking(listenfd);
-    //if(set_nonblocking(listenfd) == -1) { std::cout << "set_nonblocking error!" << std::endl; }
+    //set_nonblocking(listenfd);
+    if(set_nonblocking(listenfd) == -1) { std::cout << "set_nonblocking error!" << std::endl; }
+
+    addsignal(SIGPIPE,SIG_IGN);
 
     int reuse = 1;
     if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse)) == -1){ std::cout << "setsockopt error!" << std::endl; }
@@ -454,6 +468,8 @@ int main(){
 
     ret = listen(listenfd, FD_MAXSIZE);
     if(ret == -1) { std::cout << "listenfd listen error!" << std::endl; return -1; }
+
+    threadpool* pool = new threadpool();
 
     task* tasks = new task[MAX_FD];
     int m_epollfd = epoll_create(5);
@@ -483,7 +499,8 @@ int main(){
                 tasks[sockfd].close_connect();
             }else if(event[i].events & EPOLLIN){
                 if(tasks[sockfd].read()){
-                    tasks[sockfd].process();
+                    //tasks[sockfd].process();
+                    pool->append(tasks + sockfd);
                 }else{
                     tasks[sockfd].close_connect();
                 }
@@ -499,5 +516,6 @@ int main(){
     close(m_epollfd);
     close(listenfd);
     delete[] tasks; 
+    delete pool;
     return 0;
 }

@@ -33,10 +33,13 @@ const char* error_500_form = "There was an unusual problem serving the requested
 int task::m_epollfd = -1;
 int task::m_user_count = 0;
 
-void set_nonblocking(int sockfd){
-    int flags = fcntl(sockfd,F_GETFL);
-    flags = flags | O_NONBLOCK;
-    //fcntl(sockfd,F_SETFL,flags);//设置fd的属性
+int set_nonblocking(int sockfd){
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if(flags == -1) {return -1;}
+    flags |= O_NONBLOCK;
+    if(fcntl(sockfd,F_SETFL,flags) == -1)
+        return -1;
+    return 0;
 } 
 
 void addfd(int epollfd, int sockfd, bool one_shot){
@@ -263,7 +266,7 @@ HTTP_RESULT task::parse_request_line(char* text)
     /**
      * http://192.168.110.129:10000/index.html
     */
-    if(strncasecmp(m_url,"HTTP/1.1",7) == 0){
+    if(strncasecmp(m_url,"http://",7) == 0){
         m_url += 7;
         m_url = strchr(m_url,'/');  //192.168.110.129:10000/index.html查找/的位置并返回该位置的指针,此时m_url = /index.html
     }
@@ -295,7 +298,7 @@ HTTP_RESULT task::parse_request_header(char *text)
     }else if(strncasecmp(text, "Connection:", 11) == 0){
         text += 11;
         text += strspn(text, " \t");
-        if(strncasecmp(text, "keep-alive", 10) == 0){
+        if(strcasecmp(text, "keep-alive") == 0){
             m_linger = true;
         }
         return HTTP_RESULT::NO_REQUEST;
@@ -307,7 +310,7 @@ HTTP_RESULT task::parse_request_header(char *text)
     }else if(strncasecmp(text, "Content-Length:", 15) == 0){
         text += 15;
         text += strspn(text, " \t");
-        m_content_length = atoi(text);
+        m_content_length = atol(text);
         return HTTP_RESULT::NO_REQUEST;
     }else{
         printf("unknow header line: %s\n", text);
@@ -490,7 +493,7 @@ bool task::add_headers(int content_length)
     //连接方式
     bool result3 = add_Response("Connection: %s\r\n", (m_linger == true) ? "keep-alive" : "close");
     //空白行
-    bool result4 = add_Response("\r\n");
+    bool result4 = add_Response("%s", "\r\n");
     return result1 && result2 && result3 && result4;
 }
 
@@ -550,8 +553,8 @@ void task::process()
 */
 bool task::write()
 {
-    int temp;
-    int byte_have_send; //已经发送的字节数
+    int temp = 0;
+    int byte_have_send = 0; //已经发送的字节数
     int byte_to_send = m_write_idx;   //将要发送的字节数
 
     if(byte_to_send == 0){
