@@ -86,7 +86,7 @@ task::~task()
 void task::init(int sockfd, const sockaddr_in &addr)
 {
     m_sockfd = sockfd;
-    m_address = addr;
+    //m_address = addr;
 
     //设置地址端口复用
     int reuse = 1;
