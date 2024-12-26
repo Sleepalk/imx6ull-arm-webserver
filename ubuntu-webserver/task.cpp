@@ -86,6 +86,7 @@ task::~task()
 void task::init(int sockfd, const sockaddr_in &addr)
 {
     m_sockfd = sockfd;
+    m_address = addr;
 
     //设置地址端口复用
     int reuse = 1;
@@ -106,7 +107,7 @@ void task::init(int sockfd, const sockaddr_in &addr)
     by liuyingen 2024.12.11
 */
 void task::init(){
-    m_user_count = 0;
+    //m_user_count = 0;
     m_read_idx = 0;
     m_write_idx = 0;
     memset(recvBuf,0,sizeof(recvBuf));
@@ -121,7 +122,8 @@ void task::init(){
     m_host = 0;         //主机名
     memset(m_real_file,0,sizeof(m_real_file));
     //memset(m_file_stat,0,sizeof(m_file_stat));
-    m_file_address = 0;
+    bzero(m_real_file, 200);
+    //m_file_address = 0;
 }
 
 /*
@@ -153,7 +155,7 @@ HTTP_RESULT task::parseRead()
     LINE_STATE line_state = LINE_OK;
     HTTP_RESULT ret = NO_REQUEST;
     char* text = 0;
-    while(((m_check_state == CHECK_STATE_REQUESTBODY) && (line_state == LINE_OK)) || (line_state = parse_line()) == LINE_OK){
+    while((( m_check_state == CHECK_STATE_REQUESTBODY) && (line_state == LINE_OK)) || ((line_state = parse_line()) == LINE_OK)){
         //解析到了一行完整数据 或者 解析到了请求体, 都说明数据完整
 
         //拿到刚刚解析到的一行数据
@@ -204,28 +206,25 @@ HTTP_RESULT task::parseRead()
 LINE_STATE task::parse_line()
 {
     char curTemp;
-    for(;m_check_index < m_read_idx; m_check_index++){
+    for(;m_check_index < m_read_idx; ++m_check_index){
         curTemp = recvBuf[m_check_index];
         if(curTemp == '\r'){
             if((m_check_index + 1) == m_read_idx){
                 return LINE_OPEN;
             }
-            if(recvBuf[m_check_index + 1] == '\n'){
+            else if(recvBuf[m_check_index + 1] == '\n'){
                 recvBuf[m_check_index++] = '\0';
                 recvBuf[m_check_index++] = '\0';
                 return LINE_OK;
             }
             return LINE_BAD;
         }else if(curTemp == '\n'){
-            if(m_check_index == 0)
-                return LINE_BAD;
-            if(recvBuf[m_check_index - 1] == '\r'){
-                recvBuf[m_check_index - 1] = '\0';
-                recvBuf[m_check_index++] = '\0';
+            if( ( m_check_index > 1) && ( recvBuf[ m_check_index - 1 ] == '\r' ) ) {
+                recvBuf[ m_check_index-1 ] = '\0';
+                recvBuf[ m_check_index++ ] = '\0';
                 return LINE_OK;
-            }   
-            else
-                return LINE_BAD;
+            }
+            return LINE_BAD;
         }
     }
     return LINE_OPEN;
@@ -248,6 +247,9 @@ HTTP_RESULT task::parse_request_line(char* text)
 {
     // GET /index.html HTTP/1.1
     m_url = strpbrk(text," \t");
+    if (! m_url) { 
+        return HTTP_RESULT::BAD_REQUEST;
+    }
     *m_url++ = '\0';        //  GET\0/index.html\tHTTP/1.1 , m_url执行完++后指向/index.html\tHTTP/1.1
     char* curMethod = text;
     if(strcasecmp(curMethod,"GET") == 0){
@@ -301,21 +303,22 @@ HTTP_RESULT task::parse_request_header(char *text)
         if(strcasecmp(text, "keep-alive") == 0){
             m_linger = true;
         }
-        return HTTP_RESULT::NO_REQUEST;
+        //return HTTP_RESULT::NO_REQUEST;
     }else if(strncasecmp(text, "Host:", 5) == 0){
         text += 5;
         text += strspn(text, " \t");
         m_host = text;
-        return HTTP_RESULT::NO_REQUEST;
+        //return HTTP_RESULT::NO_REQUEST;
     }else if(strncasecmp(text, "Content-Length:", 15) == 0){
         text += 15;
         text += strspn(text, " \t");
         m_content_length = atol(text);
-        return HTTP_RESULT::NO_REQUEST;
+        //return HTTP_RESULT::NO_REQUEST;
     }else{
         printf("unknow header line: %s\n", text);
-        return HTTP_RESULT::NO_REQUEST;
+        //return HTTP_RESULT::NO_REQUEST;
     }
+    return HTTP_RESULT::NO_REQUEST;
 }
 
 /*
@@ -383,7 +386,6 @@ bool task::makeResponse(HTTP_RESULT result)
         m_iv[1].iov_len = m_file_stat.st_size;
         m_iv_count = 2;
         return true;
-        break;
     }
     case INTERNAL_ERROR:{
         //服务端内部错误
@@ -395,7 +397,7 @@ bool task::makeResponse(HTTP_RESULT result)
         break;
     }
     default:
-        break;
+        return false;
     }
     m_iv[0].iov_base = m_write_buf;
     m_iv[0].iov_len = m_write_idx;
@@ -473,7 +475,7 @@ bool task::add_Response(const char *Format, ...)
 */
 bool task::add_status_line(int state, const char *title)
 {
-    return add_Response("%s %d %s","HTTP/1.1", state, title);
+    return add_Response("%s %d %s\r\n","HTTP/1.1", state, title);
 }
 
 /*
@@ -550,7 +552,7 @@ void task::process()
     参数：无
     返回值：bool
     by liuyingen 2024.12.12
-*/
+
 bool task::write()
 {
     int temp = 0;
@@ -578,7 +580,7 @@ bool task::write()
         byte_to_send -= temp;
         byte_have_send += temp;
 
-        if(byte_to_send <= byte_have_send){
+        if(m_write_idx <= byte_have_send){
             //发送HTTP响应成功，根据HTTP请求中的Connection字段决定是否立即关闭连接
             unmap();
             if(m_linger){
@@ -590,6 +592,70 @@ bool task::write()
                 return false;
             }
         }
+    }
+}
+*/
+bool task::write()
+{
+    int temp = 0;
+    int bytes_have_send = 0;  // 已经发送的字节数
+    int bytes_to_send = m_write_idx;  // 响应头的大小
+
+    // 如果有文件要发送，加上文件大小
+    if(m_iv_count == 2) {
+        bytes_to_send += m_file_stat.st_size;
+    }
+
+    printf("Total to send: %d (header: %d, file: %ld)\n", 
+           bytes_to_send, m_write_idx, 
+           m_iv_count == 2 ? m_file_stat.st_size : 0);
+
+    while(bytes_have_send < bytes_to_send) {
+        // 更新iovec数组
+        if(bytes_have_send < m_write_idx) {
+            // 还在发送响应头
+            m_iv[0].iov_base = m_write_buf + bytes_have_send;
+            m_iv[0].iov_len = m_write_idx - bytes_have_send;
+            if(m_iv_count == 2) {
+                m_iv[1].iov_base = m_file_address;
+                m_iv[1].iov_len = m_file_stat.st_size;
+            }
+        } else {
+            // 响应头发送完毕，正在发送文件
+            m_iv[0].iov_len = 0;
+            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
+            m_iv[1].iov_len = bytes_to_send - bytes_have_send;
+        }
+
+        temp = writev(m_sockfd, m_iv, m_iv_count);
+        
+        printf("writev return: %d, bytes_have_send: %d, bytes_to_send: %d\n", 
+               temp, bytes_have_send, bytes_to_send);
+
+        if(temp <= -1) {
+            if(errno == EAGAIN) {
+                modfd(m_epollfd, m_sockfd, EPOLLOUT);
+                return true;
+            }
+            unmap();
+            return false;
+        }
+
+        bytes_have_send += temp;
+    }
+
+    printf("Send completed: %d bytes\n", bytes_have_send);
+
+    // 发送完毕
+    unmap();
+    if(m_linger) {
+        init();
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        return true;
+    } else {
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        //close_connect();
+        return false;
     }
 }
 
@@ -608,8 +674,7 @@ bool task::read()
     int bytes_read = 0;
     while(true) {
         // 从m_read_buf + m_read_idx索引出开始保存数据，大小是READ_BUFFER_SIZE - m_read_idx
-        bytes_read = recv(m_sockfd, recvBuf + m_read_idx, 
-        READ_BUFFER_SIZE - m_read_idx, 0 );
+        bytes_read = recv(m_sockfd, recvBuf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0 );
         if (bytes_read == -1) {
             if( errno == EAGAIN || errno == EWOULDBLOCK ) {
                 // 没有数据
@@ -620,7 +685,7 @@ bool task::read()
             return false;
         }
         m_read_idx += bytes_read;
-        return true;
+        //return true;
     }
     return true;
 }

@@ -448,6 +448,7 @@ extern void removefd(int epollfd, int sockfd);
 extern void modfd(int epollfd, int sockfd, int ev);
 
 int main(){
+    std::cout << "webServer start!" << std::endl;
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
     if(listenfd == -1) { std::cout << "create listenfd error!" << std::endl; return -1;}
 
@@ -466,7 +467,7 @@ int main(){
     int ret = bind(listenfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
     if(ret == -1) { std::cout << "listenfd bind error!" << std::endl; return -1; }
 
-    ret = listen(listenfd, FD_MAXSIZE);
+    ret = listen(listenfd, 10);
     if(ret == -1) { std::cout << "listenfd listen error!" << std::endl; return -1; }
 
     threadpool* pool = new threadpool();
@@ -478,13 +479,14 @@ int main(){
     task::m_epollfd = m_epollfd;
 
     while(true){
+        std::cout << "wait client connect!" << std::endl;
         int num = epoll_wait(m_epollfd, event, MAX_EVENT_NUMBER, -1);
         if((num < 0) && (errno != EINTR)){
             std::cout << "epoll error" << std::endl;
             break;
         }
 
-        for(auto i = 0; i < num; ++i){
+        for(int i = 0; i < num; ++i){
             int sockfd = event[i].data.fd;
             if(sockfd == listenfd){
                 sockaddr_in client_address;
@@ -512,7 +514,7 @@ int main(){
         }
 
     }
-
+    std::cout << "webServer end!" << std::endl;
     close(m_epollfd);
     close(listenfd);
     delete[] tasks; 
