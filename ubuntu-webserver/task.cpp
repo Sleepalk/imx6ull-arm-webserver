@@ -86,7 +86,11 @@ task::~task()
 void task::init(int sockfd, const sockaddr_in &addr)
 {
     m_sockfd = sockfd;
+<<<<<<< HEAD
     //m_address = addr;
+=======
+    //m_file_address = addr;
+>>>>>>> 1ce9834e7dedc41e46c93822322041a796b4dbc7
 
     //设置地址端口复用
     int reuse = 1;
@@ -473,7 +477,7 @@ bool task::add_Response(const char *Format, ...)
     返回值：bool
     by liuyingen 2024.12.19
 */
-bool task::add_status_line(int state, const char *title)
+bool task::  add_status_line(int state, const char *title)
 {
     return add_Response("%s %d %s\r\n","HTTP/1.1", state, title);
 }
